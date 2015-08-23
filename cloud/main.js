@@ -3,8 +3,9 @@ var createTimeSegments = require('cloud/functions/createTimeSegments.js'),
     trueDurationFetch = require('cloud/functions/trueDurationFetch.js');
 
 Parse.Cloud.job('createTimeSegments', function(request, status) {
-    createTimeSegments.execute();
-    status.success("segments created");
+    createTimeSegments.execute().then(function () {
+        status.success("segments created");
+    });
 });
 
 Parse.Cloud.define('trueTimeFetch', function(request, response) {

@@ -47,42 +47,8 @@ var TimeSegmentsManager = {
     },
 
     /**
-     * Custom iterator.
-     * Cause of limitations of 'find' query and counting objects on parse.com.
-     * But there is no limitations for 'skip' in the documentation.
-     * TODO: reimplement it with using of series promises. but in tech task we don't need to react on success.
-     * @param {string} className
-     * @param {function} callback
-     * @param {Object} ctx
-     * @return {Parse.Promise}
-     */
-    _iterateOverClass: function (className, callback, ctx) {
-        'use strict';
-
-        var classObject = Parse.Object.extend(className),
-            query = null,
-            batchLimit = 999,
-            promise = new Parse.Promise();
-
-        (function next (cursor, promise, ctx) {
-            query = new Parse.Query(classObject);
-            query.limit(batchLimit);
-            query.skip(cursor);
-            query.find().then(function (results) {
-                results.forEach(callback.bind(ctx));
-                if (results.length === batchLimit) {
-                    next(cursor + batchLimit, promise, ctx);
-                } else {
-                    promise.resolve('all ' + className + ' objects iterated');
-                }
-            });
-        })(0, promise, ctx || this);
-
-        return promise;
-    },
-
-    /**
      * @param {Parse.Object} workshop
+     * @return {Parse.Promise}
      * @private
      */
     _processWorkshop: function (workshop) {
@@ -91,28 +57,73 @@ var TimeSegmentsManager = {
         var workshopKey = workshop.get('WorkshopKey'),
             workshopHolidays = workshop.get('Holidays'),
             workshopTimetable = workshop.get('Timetable'),
-            workshopLunchbreak = workshop.get('WDATA').lunchbreak,
-            TimeSegmentsClass = Parse.Object.extend('TimeSegments');
+            workshopDurations = this._getWorkDurations(workshop),
+            TimeSegmentsClass = Parse.Object.extend('TimeSegments'),
+            promise = Parse.Promise.as();
 
         this._getDaysToFill().forEach(function (day) {
-            var isHoliday = workshopHolidays.indexOf(day.format('YYYY-MM-DD')) > -1,
-                timeTable = workshopTimetable[day.format('ddd').toUpperCase()];
-            if (!isHoliday && timeTable[0]) {
-                var timeSegment = new TimeSegmentsClass(),
-                    lunchDuration = workshopLunchbreak && workshopLunchbreak.length ? workshopLunchbreak[1] - workshopLunchbreak[0] : 0,
-                    duration = (timeTable[2] - timeTable[1] - lunchDuration) * 60 / 100;
+            promise = promise.then(function(day) {
+                var isHoliday = workshopHolidays.hasOwnProperty(day.format('YYYY-MM-DD')),
+                    dayName = day.format('ddd').toUpperCase(),
+                    timeTable = workshopTimetable[dayName];
+                if (!isHoliday && timeTable[0] === 1) {
+                    var timeSegment = new TimeSegmentsClass();
 
-                timeSegment.save({
-                    WorkshopKey: workshopKey,
-                    SegmentId: this._getSegmentId(),
-                    Date: day.format('M/D/YYYY'),
-                    BeginTime: timeTable[1],
-                    EndTime: timeTable[2],
-                    Duration: duration,
-                    CDuration: this._getCDuration(duration)
-                });
-            }
+                    return timeSegment.save({
+                        WorkshopKey: workshopKey,
+                        SegmentId: this._getSegmentId(),
+                        Date: day.format('YYYY-MM-DD'),
+                        BeginTime: timeTable[1],
+                        EndTime: timeTable[2],
+                        Duration: workshopDurations[dayName],
+                        CDuration: this._getCDuration(workshopDurations[dayName])
+                    });
+                }
+            }.bind(this, day));
         }, this);
+
+        return promise;
+    },
+
+    /**
+     * @param {Parse.Object} workshop
+     * @return {string, moment}
+     * @private
+     */
+    _getWorkDurations: function (workshop) {
+        var workshopTimetable = workshop.get('Timetable'),
+            workshopLunchbreak = workshop.get('WDATA').LunchBreak,
+            durations = {};
+
+        for (var day in workshopTimetable) {
+            var timeTable = workshopTimetable[day];
+
+            if (timeTable[0] === 0) {
+                durations[day] = 0;
+                continue;
+            }
+
+            var durationInSeconds = this._getMomentedTime(timeTable[2]) - this._getMomentedTime(timeTable[1]);
+
+            if (workshopLunchbreak && workshopLunchbreak.length) {
+                durationInSeconds -= this._getMomentedTime(workshopLunchbreak[1]) - this._getMomentedTime(workshopLunchbreak[0]);
+            }
+
+            var momentedDuration = moment.duration(durationInSeconds);
+            durations[day] = momentedDuration.hours() * 60 + momentedDuration.minutes();
+        }
+
+        return durations
+    },
+
+    /**
+     * @param {Number} time
+     * @return {moment}
+     * @private
+     */
+    _getMomentedTime: function (time) {
+        var timeString = time.toString();
+        return moment((timeString.length === 3 ? '0' : '') + timeString, 'HHmm');
     },
 
     /**
@@ -123,10 +134,12 @@ var TimeSegmentsManager = {
         'use strict';
 
         if (!this._daysArray) {
+            var currentDate = +new Date(),
+                msInDay = 86400000;
             this._daysArray = Array.apply(null, {
                 length: this._numberOfDays + 1
             }).map(function (value, index) {
-                return moment().add(index, 'd');
+                return moment(currentDate + msInDay * index);
             });
         }
 
@@ -135,11 +148,13 @@ var TimeSegmentsManager = {
 
     /**
      * @private
+     * @return {Parse.Promise}
      */
     _fillTimeSegments: function () {
         'use strict';
 
-        this._iterateOverClass('allWorkshopKeys', this._processWorkshop, this);
+        var query = new Parse.Query('Workshop');
+        return query.each(this._processWorkshop.bind(this));
     },
 
     /**
@@ -147,29 +162,29 @@ var TimeSegmentsManager = {
      * @return {Parse.Promise}
      */
     _cleanTimeSegments: function () {
-        var promise = new Parse.Promise();
+        'use strict';
 
-        this._iterateOverClass('TimeSegments', function (timeSegment) {
-            timeSegment.destroy();
-        }, this).then(function () {
-            promise.resolve('TimeSegments is empty');
+        var query = new Parse.Query('TimeSegments');
+        return query.each(function (timeSegment) {
+            return timeSegment.destroy();
         });
-
-        return promise;
     },
 
     /**
      * @public
+     * @return {Parse.Promise}
      */
     createTimeSegments: function () {
         'use strict';
 
-        var currentHours = new Date().getHours() + 1;
-        if (currentHours >= 8 && currentHours < 20) {
-            return;
-        }
+        return Parse.Config.get().then(function (config) {
+            var currentHours = new Date().getHours() + 1;
+            if (config.attributes.environment !== 'development' && currentHours >= 8 && currentHours < 20) {
+                return;
+            }
 
-        this._cleanTimeSegments.then(this._fillTimeSegments);
+            return this._cleanTimeSegments().then(this._fillTimeSegments.bind(this));
+        }.bind(this));
     }
 };
 
