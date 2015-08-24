@@ -56,30 +56,35 @@ var TimeSegmentsManager = {
 
         var workshopKey = workshop.get('WorkshopKey'),
             workshopHolidays = workshop.get('Holidays'),
-            workshopTimetable = workshop.get('Timetable'),
-            workshopDurations = this._getWorkDurations(workshop),
+            workshopTimetable = this._getWorkshopTimetable(workshop),
             TimeSegmentsClass = Parse.Object.extend('TimeSegments'),
             promise = Parse.Promise.as();
 
         this._getDaysToFill().forEach(function (day) {
-            promise = promise.then(function(day) {
-                var isHoliday = workshopHolidays.hasOwnProperty(day.format('YYYY-MM-DD')),
-                    dayName = day.format('ddd').toUpperCase(),
-                    timeTable = workshopTimetable[dayName];
-                if (!isHoliday && timeTable[0] === 1) {
-                    var timeSegment = new TimeSegmentsClass();
+            var isHoliday = workshopHolidays.hasOwnProperty(day.format('YYYY-MM-DD')),
+                dayName = day.format('ddd').toUpperCase(),
+                dayTimeTable = workshopTimetable[dayName];
+
+            if (isHoliday || dayTimeTable.length === 0) {
+                return;
+            }
+
+            dayTimeTable.forEach(function (period) {
+                promise = promise.then(function(day) {
+                    var timeSegment = new TimeSegmentsClass(),
+                        duration = this._getDurationForPeriod(period);
 
                     return timeSegment.save({
                         WorkshopKey: workshopKey,
                         SegmentId: this._getSegmentId(),
                         Date: day.format('YYYY-MM-DD'),
-                        BeginTime: timeTable[1],
-                        EndTime: timeTable[2],
-                        Duration: workshopDurations[dayName],
-                        CDuration: this._getCDuration(workshopDurations[dayName])
+                        BeginTime: period[0],
+                        EndTime: period[1],
+                        Duration: duration,
+                        CDuration: this._getCDuration(duration)
                     });
-                }
-            }.bind(this, day));
+                }.bind(this, day));
+            }, this);
         }, this);
 
         return promise;
@@ -87,33 +92,40 @@ var TimeSegmentsManager = {
 
     /**
      * @param {Parse.Object} workshop
-     * @return {string, moment}
+     * @return {Array.<Array.<number>>}
      * @private
      */
-    _getWorkDurations: function (workshop) {
+    _getWorkshopTimetable: function (workshop) {
         var workshopTimetable = workshop.get('Timetable'),
             workshopLunchbreak = workshop.get('WDATA').LunchBreak,
-            durations = {};
+            timePeriods = {};
 
         for (var day in workshopTimetable) {
-            var timeTable = workshopTimetable[day];
+            var dayTimeTable = workshopTimetable[day];
 
-            if (timeTable[0] === 0) {
-                durations[day] = 0;
+            if (dayTimeTable[0] === 0) {
+                timePeriods[day] = [];
                 continue;
             }
 
-            var durationInSeconds = this._getMomentedTime(timeTable[2]) - this._getMomentedTime(timeTable[1]);
-
             if (workshopLunchbreak && workshopLunchbreak.length) {
-                durationInSeconds -= this._getMomentedTime(workshopLunchbreak[1]) - this._getMomentedTime(workshopLunchbreak[0]);
+                timePeriods[day] = [[dayTimeTable[1], workshopLunchbreak[0]], [workshopLunchbreak[1], dayTimeTable[2]]];
+            } else {
+                timePeriods[day] = [[dayTimeTable[1], dayTimeTable[2]]];
             }
-
-            var momentedDuration = moment.duration(durationInSeconds);
-            durations[day] = momentedDuration.hours() * 60 + momentedDuration.minutes();
         }
 
-        return durations
+        return timePeriods;
+    },
+
+    /**
+     * @param {Array.<number>} period
+     * @return {number}
+     * @private
+     */
+    _getDurationForPeriod: function (period) {
+        var momentedDuration = moment.duration(this._getMomentedTime(period[1]) - this._getMomentedTime(period[0]));
+        return momentedDuration.hours() * 60 + momentedDuration.minutes();
     },
 
     /**
