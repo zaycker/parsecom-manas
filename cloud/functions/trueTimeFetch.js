@@ -8,59 +8,54 @@ var TimeFetcher = {
      * @return {Parse.Promise}
      */
     trueTimeFetch: function (WorkShopKey, StartTime, T_offset) {
-        var returnPromise = new Parse.Promise(),
-            queryProcessPromise = new Parse.Promise(),
-            self = this;
-
-        queryProcessPromise.then(function (cStartDuration) {
-            var cEndDuration = cStartDuration + T_offset,
-                query = this._getQueryObject(WorkShopKey);
-
-            query.greaterThan('CDuration', cEndDuration);
-            query.ascending('SegmentId');
-            query.first().then(function (timeSegment) {
-                if (typeof timeSegment !== 'undefined') {
-                    returnPromise.resolve(timeSegment.get('EndTime') - (timeSegment.get('CDuration') - cEndDuration));
-                }
-            });
-        });
-
         var query = this._getQueryObject(WorkShopKey);
         query.lessThanOrEqualTo('BeginTime', StartTime);
         query.greaterThanOrEqualTo('EndTime', StartTime);
-        query.first().then(function (timeSegment) {
+        return query.first().then(function (timeSegment) {
+            var cStartDuration;
             if (typeof timeSegment !== 'undefined') {
-                self._timeSegmentFound(timeSegment, queryProcessPromise);
+                cStartDuration = this._timeSegmentFound(timeSegment);
             } else {
-                self._timeSegmentNotFound(WorkShopKey, StartTime, queryProcessPromise);
+                cStartDuration = this._timeSegmentNotFound(WorkShopKey, StartTime);
+            }
+
+            return this._processCStartDuration(cStartDuration, WorkShopKey, T_offset);
+        }.bind(this));
+    },
+
+    _processCStartDuration: function (cStartDuration, WorkShopKey, T_offset) {
+        var cEndDuration = cStartDuration + T_offset,
+            query = this._getQueryObject(WorkShopKey);
+console.log(cStartDuration);
+        query.greaterThan('CDuration', cEndDuration);
+        query.ascending('SegmentId');
+        return query.first().then(function (timeSegment) {
+            if (typeof timeSegment !== 'undefined') {
+                return timeSegment.get('EndTime') - (timeSegment.get('CDuration') - cEndDuration);
             }
         });
-
-        return returnPromise;
     },
 
     /**
      * @param {Parse.Object} timeSegment
-     * @param {Parse.Promise} promise
      * @private
      */
-    _timeSegmentFound: function (timeSegment, promise) {
-        promise.resolve(timeSegment.get('CDuration') - (timeSegment.get('EndTime') - timeSegment.get('StartTime')));
+    _timeSegmentFound: function (timeSegment) {
+        return timeSegment.get('CDuration') - (timeSegment.get('EndTime') - timeSegment.get('StartTime'));
     },
 
     /**
      * @param {String} WorkShopKey
      * @param {Number} StartTime
-     * @param {Parse.Promise} promise
      * @private
      */
-    _timeSegmentNotFound: function (WorkShopKey, StartTime, promise) {
+    _timeSegmentNotFound: function (WorkShopKey, StartTime) {
         var query = this._getQueryObject(WorkShopKey);
         query.greaterThanOrEqualTo('BeginTime', StartTime);
         query.ascending('SegmentId');
-        query.first().then(function (timeSegment) {
+        return query.first().then(function (timeSegment) {
             if (typeof timeSegment !== 'undefined') {
-                promise.resolve(timeSegment.get('CDuration') - timeSegment.get('Duration'));
+                return timeSegment.get('CDuration') - timeSegment.get('Duration');
             }
         });
     },
