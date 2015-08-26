@@ -1,5 +1,5 @@
 var createTimeSegments = require('cloud/functions/createTimeSegments.js'),
-    toolSet = require('cloud/functions/toolSet.js');
+    fetchFunctions = require('cloud/functions/fetchFunctions.js');
 
 Parse.Cloud.job('createTimeSegments', function(request, status) {
     createTimeSegments.execute().then(function () {
@@ -9,14 +9,12 @@ Parse.Cloud.job('createTimeSegments', function(request, status) {
 
 Parse.Cloud.define('trueTimeFetch', function(request, response) {
     var params = request.params;
-    toolSet.trueTimeFetch(params.WorkShopKey, params.StartDate, params.StartTime, params.T_offset).then(function (endTime) {
-        response.success(endTime);
-    });
+    fetchFunctions.trueTimeFetch(params.WorkShopKey, params.StartDate, params.StartTime, params.T_offset)
+        .then(response.success);
 });
 
 Parse.Cloud.define('trueDurationFetch', function(request, response) {
     var params = request.params;
-    toolSet.trueDurationFetch(params.WorkshopKey, params.StartDate, params.StartTime, params.EndDate, params.EndTime).then(function (duration) {
-        response.success(duration);
-    });
+    fetchFunctions.trueDurationFetch(params.WorkshopKey, params.StartDate, params.StartTime, params.EndDate, params.EndTime)
+        .then(response.success);
 });

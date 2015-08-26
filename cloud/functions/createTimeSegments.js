@@ -1,6 +1,7 @@
 /*global module,Parse*/
 
-var moment = require('moment');
+var moment = require('moment'),
+    utils = require('cloud/functions/utils');
 
 var TimeSegmentsManager = {
     /**
@@ -35,6 +36,8 @@ var TimeSegmentsManager = {
      * @private
      */
     _getCDuration: function (duration) {
+        'use strict';
+
         return this._cDuration += duration;
     },
 
@@ -43,6 +46,8 @@ var TimeSegmentsManager = {
      * @private
      */
     _getSegmentId: function () {
+        'use strict';
+
         return this._segmentId++;
     },
 
@@ -72,7 +77,7 @@ var TimeSegmentsManager = {
             dayTimeTable.forEach(function (period) {
                 promise = promise.then(function(day) {
                     var timeSegment = new TimeSegmentsClass(),
-                        duration = this._getDurationForPeriod(period);
+                        duration = utils.getDurationForPeriod(period);
 
                     return timeSegment.save({
                         WorkshopKey: workshopKey,
@@ -97,6 +102,8 @@ var TimeSegmentsManager = {
      * @private
      */
     _getWorkshopTimetable: function (workshop) {
+        'use strict';
+
         var workshopTimetable = workshop.get('Timetable'),
             workshopLunchbreak = workshop.get('WDATA').LunchBreak,
             timePeriods = {};
@@ -120,26 +127,6 @@ var TimeSegmentsManager = {
     },
 
     /**
-     * @param {Array.<number>} period
-     * @return {number}
-     * @private
-     */
-    _getDurationForPeriod: function (period) {
-        var momentedDuration = moment.duration(this._getMomentedTime(period[1]) - this._getMomentedTime(period[0]));
-        return momentedDuration.hours() * 60 + momentedDuration.minutes();
-    },
-
-    /**
-     * @param {Number} time
-     * @return {moment}
-     * @private
-     */
-    _getMomentedTime: function (time) {
-        var timeString = time.toString();
-        return moment((timeString.length === 3 ? '0' : '') + timeString, 'HHmm');
-    },
-
-    /**
      * @return {Array.<moment>}
      * @private
      */
@@ -147,7 +134,7 @@ var TimeSegmentsManager = {
         'use strict';
 
         if (!this._daysArray) {
-            var currentDate = +new Date(),
+            var currentDate = moment('00:00:00', '00:00:00').valueOf(),
                 msInDay = 86400000;
             this._daysArray = Array.apply(null, {
                 length: this._numberOfDays + 1
