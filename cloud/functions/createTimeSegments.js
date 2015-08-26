@@ -78,6 +78,7 @@ var TimeSegmentsManager = {
                         WorkshopKey: workshopKey,
                         SegmentId: this._getSegmentId(),
                         Date: day.format('YYYY-MM-DD'),
+                        DateObject: day.toDate(),
                         BeginTime: period[0],
                         EndTime: period[1],
                         Duration: duration,
