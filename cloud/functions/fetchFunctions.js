@@ -1,6 +1,7 @@
 /*global Parse*/
 
-var utils = require('cloud/functions/utils');
+var moment = require('moment'),
+    utils = require('cloud/functions/utils');
 
 var fetchFunctions = {
     /**
@@ -29,10 +30,10 @@ var fetchFunctions = {
     trueDurationFetch: function (workShopKey, startDate, startTime, endDate, endTime) {
         'use strict';
 
-        return Parse.Promise.when([
+        return Parse.Promise.when(
             this._convertDateTimeToCDuration(workShopKey, startDate, startTime),
             this._convertDateTimeToCDuration(workShopKey, endDate, endTime)
-        ]).then(function (cStartDuration, cEndDuration) {
+        ).then(function (cStartDuration, cEndDuration) {
             return cEndDuration - cStartDuration;
         });
     },
@@ -47,17 +48,19 @@ var fetchFunctions = {
     _convertDateTimeToCDuration: function(workShopKey, date, time) {
         'use strict';
 
-        var query = new Parse.Query('TimeSegments');
+        var format = 'YYYY-MM-DD',
+            query = new Parse.Query('TimeSegments');
+
         query.equalTo('WorkshopKey', workShopKey);
-        query.equalTo('Date', moment(date).format('YYYY-MM-DD'));
+        query.equalTo('Date', (typeof date === 'string' ? moment(date, format) : moment(date)).format('YYYY-MM-DD'));
         return query.find().then(function (results) {
             if (results.length !== 2) {
                 var query = new Parse.Query('TimeSegments');
                 query.equalTo('WorkshopKey', workShopKey);
-                query.lowerThan('DateObject', moment(date).toDate());
+                query.lessThan('DateObject', moment(date).toDate());
                 query.descending('SegmentId');
                 return query.first().then(function (segment) {
-                    return segment.get('BeginTime');
+                    return segment ? segment.get('BeginTime') : null;
                 });
             }
 
@@ -94,15 +97,15 @@ var fetchFunctions = {
         var query = new Parse.Query('TimeSegments');
         query.equalTo('WorkshopKey', workShopKey);
         query.greaterThan('CDuration', cDuration);
-        query.descending('SegmentId');
+        query.ascending('SegmentId');
         return query.first().then(function (segment) {
-            return [
-                segment ? segment.get('Date') : null,
-                segment ? utils.getDurationForPeriod([
+            return {
+                'Date': segment ? segment.get('Date') : null,
+                'Time': segment ? this._durationMinutesToHours(utils.getDurationForPeriod([
                     this._durationMinutesToHours(segment.get('CDuration') - cDuration),
                     segment.get('EndTime')
-                ]) : null
-            ]
+                ])) : null
+            }
         }.bind(this));
     },
 
@@ -115,7 +118,7 @@ var fetchFunctions = {
         var hours = Math.floor(duration / 60),
             minutes = duration % 60;
 
-        return '' + hours + minutes;
+        return '' + (hours < 10 ? '0' + hours : hours) + (minutes < 10 ? '0' + minutes : minutes);
     }
 };
 

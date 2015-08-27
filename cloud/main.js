@@ -15,6 +15,6 @@ Parse.Cloud.define('trueTimeFetch', function(request, response) {
 
 Parse.Cloud.define('trueDurationFetch', function(request, response) {
     var params = request.params;
-    fetchFunctions.trueDurationFetch(params.WorkshopKey, params.StartDate, params.StartTime, params.EndDate, params.EndTime)
+    fetchFunctions.trueDurationFetch(params.WorkShopKey, params.StartDate, params.StartTime, params.EndDate, params.EndTime)
         .then(response.success);
 });

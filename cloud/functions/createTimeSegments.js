@@ -134,11 +134,11 @@ var TimeSegmentsManager = {
         'use strict';
 
         if (!this._daysArray) {
-            var currentDate = moment('00:00:00', '00:00:00').valueOf(),
+            var currentDate = moment().startOf('day').valueOf(),
                 msInDay = 86400000;
             this._daysArray = Array.apply(null, {
                 length: this._numberOfDays + 1
-            }).map(function (value, index) {
+            }).map(function (val, index) {
                 return moment(currentDate + msInDay * index);
             });
         }
