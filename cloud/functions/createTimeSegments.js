@@ -42,6 +42,15 @@ var TimeSegmentsManager = {
     },
 
     /**
+     * @private
+     */
+    _resetCDuration: function () {
+        'use strict';
+
+        this._cDuration = 0;
+    },
+
+    /**
      * @return {Number}
      * @private
      */
@@ -49,6 +58,16 @@ var TimeSegmentsManager = {
         'use strict';
 
         return this._segmentId++;
+    },
+
+    /**
+     * @return {number}
+     * @private
+     */
+    _resetSegmentId: function () {
+        'use strict';
+
+        this._segmentId = 0;
     },
 
     /**
@@ -64,6 +83,9 @@ var TimeSegmentsManager = {
             workshopTimetable = this._getWorkshopTimetable(workshop),
             TimeSegmentsClass = Parse.Object.extend('TimeSegments'),
             promise = Parse.Promise.as();
+
+        this._resetCDuration();
+        this._resetSegmentId();
 
         this._getDaysToFill().forEach(function (day) {
             var isHoliday = workshopHolidays.hasOwnProperty(day.format('YYYY-MM-DD')),
@@ -189,6 +211,6 @@ var TimeSegmentsManager = {
 };
 
 module.exports = exports = {
-    varsion: '1.0.0',
+    version: '1.0.0',
     execute: TimeSegmentsManager.createTimeSegments.bind(TimeSegmentsManager)
 };

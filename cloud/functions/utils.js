@@ -27,6 +27,6 @@ var Utils = {
 };
 
 module.exports = exports = {
-    varsion: '1.0.0',
+    version: '1.0.0',
     getDurationForPeriod: Utils.getDurationForPeriod.bind(Utils)
 };

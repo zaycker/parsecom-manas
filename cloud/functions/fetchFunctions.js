@@ -52,7 +52,8 @@ var fetchFunctions = {
             query = new Parse.Query('TimeSegments');
 
         query.equalTo('WorkshopKey', workShopKey);
-        query.equalTo('Date', (typeof date === 'string' ? moment(date, format) : moment(date)).format('YYYY-MM-DD'));
+        query.equalTo('Date', (typeof date === 'string' ? moment(date, format) : moment(date)).format(format));
+        query.ascending('SegmentId');
         return query.find().then(function (results) {
             if (results.length !== 2) {
                 var query = new Parse.Query('TimeSegments');
@@ -66,7 +67,6 @@ var fetchFunctions = {
 
             var promise = new Parse.Promise(),
                 s1 = results[0], s2 = results[1];
-
             if (time >= s1.get('BeginTime') && time <= s1.get('EndTime')) {
                 promise.resolve(s1.get('CDuration') - utils.getDurationForPeriod([time, s1.get('EndTime')]));
             } else if (time >= s2.get('BeginTime') && time <= s2.get('EndTime')) {
@@ -123,7 +123,7 @@ var fetchFunctions = {
 };
 
 module.exports = exports = {
-    varsion: '1.0.0',
+    version: '1.0.0',
     trueTimeFetch: fetchFunctions.trueTimeFetch.bind(fetchFunctions),
     trueDurationFetch: fetchFunctions.trueDurationFetch.bind(fetchFunctions)
 };
