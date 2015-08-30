@@ -55,33 +55,80 @@ var fetchFunctions = {
         query.equalTo('Date', (typeof date === 'string' ? moment(date, format) : moment(date)).format(format));
         query.ascending('SegmentId');
         return query.find().then(function (results) {
-            if (results.length !== 2) {
-                var query = new Parse.Query('TimeSegments');
-                query.equalTo('WorkshopKey', workShopKey);
-                query.lessThan('DateObject', moment(date).toDate());
-                query.descending('SegmentId');
-                return query.first().then(function (segment) {
-                    return segment ? segment.get('BeginTime') : null;
-                });
+            switch (results.length) {
+                case 2:
+                    return this._getCDurationWithLunch(time, results)
+                case 1:
+                    return this._getCDurationWithoutLunch(time, results);
+                default:
+                    return this._getCDurationWithNoSegments(workShopKey, date);
             }
+        }.bind(this));
+    },
 
-            var promise = new Parse.Promise(),
-                s1 = results[0], s2 = results[1];
-            if (time >= s1.get('BeginTime') && time <= s1.get('EndTime')) {
-                promise.resolve(s1.get('CDuration') - utils.getDurationForPeriod([time, s1.get('EndTime')]));
-            } else if (time >= s2.get('BeginTime') && time <= s2.get('EndTime')) {
-                promise.resolve(s2.get('CDuration') - utils.getDurationForPeriod([time, s2.get('EndTime')]));
-            } else if (time < s1.get('BeginTime')) {
-                promise.resolve(s1.get('CDuration') - s1.get('Duration'));
-            } else if (time > s1.get('EndTime') && time < s2.get('BeginTime')) {
-                promise.resolve(s1.get('CDuration'));
-            } else if (time > s2.get('EndTime')) {
-                promise.resolve(s2.get('CDuration'));
-            } else {
-                promise.reject();
-            }
+    /**
+     * @param {number} time
+     * @param {Array.<Array.<Parse.Object>>} segments
+     * @return {Parse.Promise}
+     * @private
+     */
+    _getCDurationWithLunch: function (time, segments) {
+        var promise = new Parse.Promise(),
+            s1 = segments[0], s2 = segments[1];
 
-            return promise;
+        if (time >= s1.get('BeginTime') && time <= s1.get('EndTime')) {
+            promise.resolve(s1.get('CDuration') - utils.getDurationForPeriod([time, s1.get('EndTime')]));
+        } else if (time >= s2.get('BeginTime') && time <= s2.get('EndTime')) {
+            promise.resolve(s2.get('CDuration') - utils.getDurationForPeriod([time, s2.get('EndTime')]));
+        } else if (time < s1.get('BeginTime')) {
+            promise.resolve(s1.get('CDuration') - s1.get('Duration'));
+        } else if (time > s1.get('EndTime') && time < s2.get('BeginTime')) {
+            promise.resolve(s1.get('CDuration'));
+        } else if (time > s2.get('EndTime')) {
+            promise.resolve(s2.get('CDuration'));
+        } else {
+            promise.reject('no interval satisfies comparisons');
+        }
+
+        return promise;
+    },
+
+    /**
+     * @param {number} time
+     * @param {Array.<Array.<Parse.Object>>} segments
+     * @return {Parse.Promise}
+     * @private
+     */
+    _getCDurationWithoutLunch: function (time, segments) {
+        var promise = new Parse.Promise(),
+            s1 = segments[0];
+
+        if (time >= s1.get('BeginTime') && time <= s1.get('EndTime')) {
+            promise.resolve(s1.get('CDuration') - utils.getDurationForPeriod([time, s1.get('EndTime')]));
+        } else if (time < s1.get('BeginTime')) {
+            promise.resolve(s1.get('CDuration') - s1.get('Duration'));
+        } else if (time > s1.get('EndTime')) {
+            promise.resolve(s1.get('CDuration'));
+        } else {
+            promise.reject('no interval satisfies comparisons');
+        }
+
+        return promise;
+    },
+
+    /**
+     * @param {string} workShopKey
+     * @param {string|Date} date
+     * @return {Parse.Promise}
+     * @private
+     */
+    _getCDurationWithNoSegments: function (workShopKey, date) {
+        var query = new Parse.Query('TimeSegments');
+        query.equalTo('WorkshopKey', workShopKey);
+        query.lessThan('DateObject', moment(date).toDate());
+        query.descending('SegmentId');
+        return query.first().then(function (segment) {
+            return segment ? segment.get('BeginTime') : null;
         });
     },
 

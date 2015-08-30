@@ -36,6 +36,7 @@
 /out/
 
 # mpeltonen/sbt-idea plugin
+/node_modules
 .idea_modules/
 
 # JIRA plugin
@@ -47,4 +48,5 @@ crashlytics.properties
 crashlytics-build.properties
 
 # Created by .ignore support plugin (hsz.mobi)
+/tests/config.json
 /config/global.json
