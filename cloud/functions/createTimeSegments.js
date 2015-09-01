@@ -97,7 +97,7 @@ var TimeSegmentsManager = {
             }
 
             dayTimeTable.forEach(function (period) {
-                promise = promise.then(function(day) {
+                promise = promise.then(function (day) {
                     var timeSegment = new TimeSegmentsClass(),
                         duration = utils.getDurationForPeriod(period);
 
@@ -193,20 +193,42 @@ var TimeSegmentsManager = {
     },
 
     /**
+     * @param {Object} params
      * @public
      * @return {Parse.Promise}
      */
-    createTimeSegments: function () {
+    createTimeSegments: function (params) {
         'use strict';
 
-        return Parse.Config.get().then(function (config) {
-            var currentHours = new Date().getHours() + 1;
-            if (config.attributes.environment !== 'development' && currentHours >= 8 && currentHours < 20) {
-                return;
-            }
+        var isDayForStart = params.startDays && params.startDays.length ? false : true;
 
-            return this._cleanTimeSegments().then(this._fillTimeSegments.bind(this));
-        }.bind(this));
+        if (!isDayForStart) {
+            isDayForStart = this._checkIsStartDay(params.startDays);
+        }
+
+        if (params.numberOfDays) {
+            this._numberOfDays = Number(params.numberOfDays);
+        }
+
+        return isDayForStart ? Parse.Config.get().then(function (config) {
+            var currentHours = new Date().getHours() + 1;
+
+            return this._cleanTimeSegments().then(this._fillTimeSegments.bind(this), Function.prototype)
+                .then(function () {
+                    return Parse.Promise.as('TimeSegments successfully created');
+                }, Function.prototype);
+        }.bind(this)) : Parse.Promise.as('today is not a day for starting CreateTimeSegments');
+    },
+
+    /**
+     * @param {Array.<string>} startDays
+     * @private
+     */
+    _checkIsStartDay: function (startDays) {
+        var today = moment().format('dddd').toLowerCase();
+        return startDays.some(function (day) {
+            return day.toLowerCase() === today;
+        });
     }
 };
 

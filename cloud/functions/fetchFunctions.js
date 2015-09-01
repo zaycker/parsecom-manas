@@ -73,24 +73,21 @@ var fetchFunctions = {
      * @private
      */
     _getCDurationWithLunch: function (time, segments) {
-        var promise = new Parse.Promise(),
-            s1 = segments[0], s2 = segments[1];
+        var s1 = segments[0], s2 = segments[1];
 
         if (time >= s1.get('BeginTime') && time <= s1.get('EndTime')) {
-            promise.resolve(s1.get('CDuration') - utils.getDurationForPeriod([time, s1.get('EndTime')]));
+            return Parse.Promise.as(s1.get('CDuration') - utils.getDurationForPeriod([time, s1.get('EndTime')]));
         } else if (time >= s2.get('BeginTime') && time <= s2.get('EndTime')) {
-            promise.resolve(s2.get('CDuration') - utils.getDurationForPeriod([time, s2.get('EndTime')]));
+            return Parse.Promise.as(s2.get('CDuration') - utils.getDurationForPeriod([time, s2.get('EndTime')]));
         } else if (time < s1.get('BeginTime')) {
-            promise.resolve(s1.get('CDuration') - s1.get('Duration'));
+            return Parse.Promise.as(s1.get('CDuration') - s1.get('Duration'));
         } else if (time > s1.get('EndTime') && time < s2.get('BeginTime')) {
-            promise.resolve(s1.get('CDuration'));
+            return Parse.Promise.as(s1.get('CDuration'));
         } else if (time > s2.get('EndTime')) {
-            promise.resolve(s2.get('CDuration'));
+            return Parse.Promise.as(s2.get('CDuration'));
         } else {
-            promise.reject('no interval satisfies comparisons');
+            return Parse.Promise.error('no interval satisfies comparisons');
         }
-
-        return promise;
     },
 
     /**
@@ -100,20 +97,17 @@ var fetchFunctions = {
      * @private
      */
     _getCDurationWithoutLunch: function (time, segments) {
-        var promise = new Parse.Promise(),
-            s1 = segments[0];
+        var s1 = segments[0];
 
         if (time >= s1.get('BeginTime') && time <= s1.get('EndTime')) {
-            promise.resolve(s1.get('CDuration') - utils.getDurationForPeriod([time, s1.get('EndTime')]));
+            return Parse.Promise.as(s1.get('CDuration') - utils.getDurationForPeriod([time, s1.get('EndTime')]));
         } else if (time < s1.get('BeginTime')) {
-            promise.resolve(s1.get('CDuration') - s1.get('Duration'));
+            return Parse.Promise.as(s1.get('CDuration') - s1.get('Duration'));
         } else if (time > s1.get('EndTime')) {
-            promise.resolve(s1.get('CDuration'));
+            return Parse.Promise.as(s1.get('CDuration'));
         } else {
-            promise.reject('no interval satisfies comparisons');
+            return Parse.Promise.error('no interval satisfies comparisons');
         }
-
-        return promise;
     },
 
     /**

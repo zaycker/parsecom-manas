@@ -3,12 +3,12 @@
     "parseVersion": "1.5.0"
   },
   "applications": {
-    "XXX": {
-      "applicationId": "YYY",
-      "masterKey": "ZZZ"
+    "<YOUR_APPLICATION_NAME>": {
+      "applicationId": "<YOUR_APPLICATION_ID>",
+      "masterKey": "<YOUR_MASTER_KEY>"
     },
     "_default": {
-      "link": "XXX"
+      "link": "<YOUR_APPLICATION_NAME>"
     }
   }
 }
