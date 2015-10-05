@@ -55,6 +55,12 @@ var TimeSegmentsManager = {
     _buffer: [],
 
     /**
+     * @type {Date}
+     * @private
+     */
+    _startTime: null,
+
+    /**
      * @param duration
      * @return {Number}
      * @private
@@ -207,12 +213,13 @@ var TimeSegmentsManager = {
      * @private
      * @return {Parse.Promise}
      */
-    _cleanTimeSegments: function () {
+    _initTimeSegmentsRemoving: function () {
         'use strict';
 
         var halfOps = Math.floor(this._batchSize / 2),
             query = new Parse.Query(this._objectClass);
 
+        this._startTime = new Date();
         this._buffer = [];
 
         query.each(function (timeSegment) {
@@ -220,12 +227,23 @@ var TimeSegmentsManager = {
             if (--halfOps <= 0) {
                 return Parse.Promise.error('HALF_OF_REQUESTS');
             }
-        }.bind(this)).then(function () {
-            this._delay(0).then(this._destroyTimeSegments.bind(this));
-        }.bind(this), function (error) {
-            this._delay(error.code === Parse.Error.REQUEST_LIMIT_EXCEEDED ?
-                this._timeoutOnLimitExceeded : 0).then(this._destroyTimeSegments.bind(this))
-        }.bind(this));
+        }.bind(this)).
+            done(this._destroyTimeSegments.bind(this)).
+            fail(function (error) {
+                return this._delay(error.code === Parse.Error.REQUEST_LIMIT_EXCEEDED ?
+                    this._getTimeoutFromLastStart() : 0).then(this._destroyTimeSegments.bind(this))
+                }.bind(this));
+    },
+
+    /**
+     * @return {number}
+     * @private
+     */
+    _getTimeoutFromLastStart: function () {
+        'use strict';
+
+        var timeout = this._timeoutOnLimitExceeded - Math.floor(new Date().getTime() - this._startTime.getTime());
+        return timeout > 0 ? timeout : 0;
     },
 
     /**
@@ -233,17 +251,30 @@ var TimeSegmentsManager = {
      * @private
      */
     _destroyTimeSegments: function () {
+        'use strict';
+
         if (!this._buffer.length) {
             return Parse.Promise.as('destroy complete');
         }
-        this._buffer = this._buffer.map(function (timeSegment) {
-            return Parse.Promise.is(timeSegment) ? timeSegment : timeSegment.destroy();
+
+        return Parse.Promise.when(this._mapRemovingBufferToPromises()).
+            done(this._initTimeSegmentsRemoving.bind(this)).
+            fail(function (error) {
+                return this._delay(error.code === Parse.Error.REQUEST_LIMIT_EXCEEDED ?
+                    this._getTimeoutFromLastStart() : 0).then(this._initTimeSegmentsRemoving.bind(this))
+            }.bind(this));
+    },
+
+    /**
+     * @return {Array}
+     * @private
+     */
+    _mapRemovingBufferToPromises: function () {
+        'use strict';
+
+        return this._buffer.map(function (timeSegment) {
+            return timeSegment.destroy();
         });
-        return Parse.Promise.when(this._buffer).then(this._cleanTimeSegments.bind(this), function (error) {
-            // TODO: some promises was rejected. and they are immutable. hmmm... we need to restart clean after timeout
-            this._delay(error.code === Parse.Error.REQUEST_LIMIT_EXCEEDED ?
-                this._timeoutOnLimitExceeded : 0).then(this._destroyTimeSegments.bind(this))
-        }.bind(this));
     },
 
     /**
@@ -272,11 +303,10 @@ var TimeSegmentsManager = {
             this._timeoutOnLimitExceeded = Number(params.timeoutOnLimitExceeded);
         }
 
-        return isDayForStart ? Parse.Config.get().then(function () {
-            return this._cleanTimeSegments().then(this._fillTimeSegments.bind(this), Function.prototype)
-                .then(function () {
-                    return Parse.Promise.as('TimeSegments successfully created');
-                }, Function.prototype);
+        return isDayForStart ? Parse.Config.get().done(function () {
+            return this._initTimeSegmentsRemoving().done(this._fillTimeSegments.bind(this)).done(function () {
+                return Parse.Promise.as('TimeSegments successfully created');
+            });
         }.bind(this)) : Parse.Promise.as('today is not a day for starting CreateTimeSegments');
     },
 
@@ -285,6 +315,8 @@ var TimeSegmentsManager = {
      * @private
      */
     _checkIsStartDay: function (startDays) {
+        'use strict';
+
         var today = moment().format('dddd').toLowerCase();
         return startDays.some(function (day) {
             return day.toLowerCase() === today;
@@ -297,6 +329,8 @@ var TimeSegmentsManager = {
      * @private
      */
     _delay: function (timeout) {
+        'use strict';
+
         var promise = new Parse.Promise();
         setTimeout(function () {
             promise.resolve();
