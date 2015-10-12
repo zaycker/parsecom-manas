@@ -1,4 +1,6 @@
 var jobWorkflow = {
+    _delayTime: 1000,
+
     start: function () {
         return this._operateWithLimitCatch(this.taskDelete.bind(this), this.taskAdd.bind(this));
     },
@@ -34,7 +36,7 @@ var jobWorkflow = {
     _operateWithLimitCatch: function (operation, nextOperation) {
         return operation.then(nextOperation, function (error) {
             return error.code === Parse.Error.REQUEST_LIMIT_EXCEEDED ?
-                this.delay(delay).done(operation) : Parse.Promise.error(error);
+                this.delay(this._delayTime).done(operation) : Parse.Promise.error(error);
         }.bind(this))
     },
 

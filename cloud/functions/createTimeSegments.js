@@ -1,7 +1,8 @@
 /*global module,Parse*/
 
 var moment = require('moment'),
-    utils = require('cloud/functions/utils');
+    utils = require('cloud/functions/utils'),
+    Promise = Parse.Promise;
 
 var TimeSegmentsManager = {
     /**
@@ -34,31 +35,19 @@ var TimeSegmentsManager = {
      * @type {Number}
      * @private
      */
-    _batchSize: 1500,
+    _packageLength: 1000,
 
     /**
      * @type {Number}
      * @private
      */
-    _timeoutOnLimitExceeded: 60000,
+    _tickLength: 0,
 
     /**
-     * @type {String}
+     * @type {Number}
      * @private
      */
-    _objectClass: 'TimeSegments',
-
-    /**
-     * @type {array}
-     * @private
-     */
-    _buffer: [],
-
-    /**
-     * @type {Date}
-     * @private
-     */
-    _startTime: null,
+    _timeOut: 1000,
 
     /**
      * @param duration
@@ -111,7 +100,7 @@ var TimeSegmentsManager = {
         var workshopKey = workshop.get('WorkshopKey'),
             workshopHolidays = workshop.get('Holidays'),
             workshopTimetable = this._getWorkshopTimetable(workshop),
-            TimeSegmentsClass = Parse.Object.extend(this._objectClass),
+            TimeSegmentsClass = Parse.Object.extend('TimeSegments'),
             promise = Parse.Promise.as();
 
         this._resetCDuration();
@@ -213,66 +202,11 @@ var TimeSegmentsManager = {
      * @private
      * @return {Parse.Promise}
      */
-    _initTimeSegmentsRemoving: function () {
+    _cleanTimeSegments: function () {
         'use strict';
 
-        var halfOps = Math.floor(this._batchSize / 2),
-            query = new Parse.Query(this._objectClass);
-
-        this._startTime = new Date();
-        this._buffer = [];
-
-        query.each(function (timeSegment) {
-            this._buffer.push(timeSegment);
-            if (--halfOps <= 0) {
-                return Parse.Promise.error('HALF_OF_REQUESTS');
-            }
-        }.bind(this)).
-            done(this._destroyTimeSegments.bind(this)).
-            fail(function (error) {
-                return this._delay(error.code === Parse.Error.REQUEST_LIMIT_EXCEEDED ?
-                    this._getTimeoutFromLastStart() : 0).then(this._destroyTimeSegments.bind(this))
-                }.bind(this));
-    },
-
-    /**
-     * @return {number}
-     * @private
-     */
-    _getTimeoutFromLastStart: function () {
-        'use strict';
-
-        var timeout = this._timeoutOnLimitExceeded - Math.floor(new Date().getTime() - this._startTime.getTime());
-        return timeout > 0 ? timeout : 0;
-    },
-
-    /**
-     * @return {Parse.Promise}
-     * @private
-     */
-    _destroyTimeSegments: function () {
-        'use strict';
-
-        if (!this._buffer.length) {
-            return Parse.Promise.as('destroy complete');
-        }
-
-        return Parse.Promise.when(this._mapRemovingBufferToPromises()).
-            done(this._initTimeSegmentsRemoving.bind(this)).
-            fail(function (error) {
-                return this._delay(error.code === Parse.Error.REQUEST_LIMIT_EXCEEDED ?
-                    this._getTimeoutFromLastStart() : 0).then(this._initTimeSegmentsRemoving.bind(this))
-            }.bind(this));
-    },
-
-    /**
-     * @return {Array}
-     * @private
-     */
-    _mapRemovingBufferToPromises: function () {
-        'use strict';
-
-        return this._buffer.map(function (timeSegment) {
+        var query = new Parse.Query('TimeSegments');
+        return query.each(function (timeSegment) {
             return timeSegment.destroy();
         });
     },
@@ -295,18 +229,13 @@ var TimeSegmentsManager = {
             this._numberOfDays = Number(params.numberOfDays);
         }
 
-        if (params.batchSize) {
-            this._batchSize = Number(params.batchSize);
-        }
+        return isDayForStart ? Parse.Config.get().then(function (config) {
+            var currentHours = new Date().getHours() + 1;
 
-        if (params.timeoutOnLimitExceeded) {
-            this._timeoutOnLimitExceeded = Number(params.timeoutOnLimitExceeded);
-        }
-
-        return isDayForStart ? Parse.Config.get().done(function () {
-            return this._initTimeSegmentsRemoving().done(this._fillTimeSegments.bind(this)).done(function () {
-                return Parse.Promise.as('TimeSegments successfully created');
-            });
+            return this._cleanTimeSegments().then(this._fillTimeSegments.bind(this), Function.prototype)
+                .then(function () {
+                    return Parse.Promise.as('TimeSegments successfully created');
+                }, Function.prototype);
         }.bind(this)) : Parse.Promise.as('today is not a day for starting CreateTimeSegments');
     },
 
@@ -315,28 +244,65 @@ var TimeSegmentsManager = {
      * @private
      */
     _checkIsStartDay: function (startDays) {
-        'use strict';
-
         var today = moment().format('dddd').toLowerCase();
         return startDays.some(function (day) {
             return day.toLowerCase() === today;
         });
     },
 
-    /**
-     * @param {Number} timeout
-     * @return {Parse.Promise}
-     * @private
-     */
-    _delay: function (timeout) {
-        'use strict';
 
-        var promise = new Parse.Promise();
-        setTimeout(function () {
-            promise.resolve();
-        }, timeout || 0);
-        return promise;
+
+
+
+
+
+//
+
+//_cleanSegments().done(createObjects).done(done);
+
+_cleanSegments: function () {
+    return this._fetchObjectsAndDestroy().done(this._isEverythinDestroyed.bind(this)).error(this._fetchObjectsAndDestroyTimeouted);
+},
+
+_fetchObjectsAndDestroy: function () {
+    var limit = this._packageLength - this._tickLength,
+        query = new Parse.Query(this._objectClass).limit(limit),
+        promisesOfObjectsToRemove = [];
+    if (!limit) {
+        return this._fetchObjectsAndDestroyTimeouted();
     }
+    return query.each(function (timeSegment) {
+        this._tickLength++;
+        promisesOfObjectsToRemove.push(timeSegment.destroy());
+    }.bind(this)).done(function () {
+        return Promise.as(promisesOfObjectsToRemove);
+    });
+},
+
+_fetchObjectsAndDestroyTimeouted: function () {
+    return this._wait().done(this._fetchObjectsAndDestroy.bind(this));
+},
+
+_isEverythinDestroyed: function (promisesOfObjectsToRemove) {
+    if (promisesOfObjectsToRemove.length === 0) {
+        return Promise.as(true);
+    }
+    return Promise.when(promisesOfObjectsToRemove).done(function () {
+        return this._tickLength < this._packageLength ? Promise.as(true) : this._fetchObjectsAndDestroyTimeouted();
+    });
+},
+
+_wait: function () {
+    return new Promise(function (resolve) {
+        tickLength = 0;
+        setTimeout(resolve, timeOut);
+    });
+}
+
+
+
+
+
 };
 
 module.exports = exports = {
