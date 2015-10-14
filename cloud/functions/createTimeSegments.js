@@ -56,6 +56,12 @@ var TimeSegmentsManager = {
     _objectClass: 'TimeSegments',
 
     /**
+     * @type {Array.<Object>}
+     * @private
+     */
+    _timeSegments: [],
+
+    /**
      * @param {Object} params
      * @public
      * @return {Parse.Promise}
@@ -105,20 +111,62 @@ var TimeSegmentsManager = {
 
         var workshopKey = workshop.get('WorkshopKey'),
             workshopHolidays = workshop.get('Holidays'),
-            workshopTimetable = this._getWorkshopTimetable(workshop),
-            TimeSegmentsClass = Parse.Object.extend(this._objectClass),
-            promise = Parse.Promise.as();
+            workshopTimetable = this._getWorkshopTimetable(workshop);
 
         var cDuration = 0;
         var segmentId = 0;
 
-        return this._getDaysToFill().filter(function (day) {
+        this._timeSegments = this._timeSegments.concat(this._getDaysToFill().reduce(function (timeSegments, day) {
             var isHoliday = workshopHolidays.hasOwnProperty(day.format('YYYY-MM-DD')),
                 dayName = day.format('ddd').toUpperCase(),
                 dayTimeTable = workshopTimetable[dayName];
 
-            return isHoliday || dayTimeTable.length === 0;
-        });
+            if (isHoliday || dayTimeTable.length === 0) {
+                return timeSegments;
+            }
+
+            return timeSegments.concat(dayTimeTable.map(function (period) {
+                var duration = utils.getDurationForPeriod(period);
+
+                return {
+                    WorkshopKey: workshopKey,
+                    SegmentId: segmentId++,
+                    Date: day.format('YYYY-MM-DD'),
+                    DateObject: day.toDate(),
+                    BeginTime: period[0],
+                    EndTime: period[1],
+                    Duration: duration,
+                    CDuration: cDuration += duration
+                };
+            }));
+        }));
+
+        //return this._getDaysToFill().filter(function (day) {
+        //    var isHoliday = workshopHolidays.hasOwnProperty(day.format('YYYY-MM-DD')),
+        //        dayName = day.format('ddd').toUpperCase(),
+        //        dayTimeTable = workshopTimetable[dayName];
+        //
+        //    return isHoliday || dayTimeTable.length === 0;
+        //}).forEach(function (day) {
+        //    dayTimeTable.forEach(function (period) {
+        //TimeSegmentsClass = Parse.Object.extend(this._objectClass),
+        //        promise = promise.then(function (day) {
+        //            var timeSegment = new TimeSegmentsClass(),
+        //                duration = utils.getDurationForPeriod(period);
+        //
+        //            return timeSegment.save({
+        //                WorkshopKey: workshopKey,
+        //                SegmentId: segmentId++,
+        //                Date: day.format('YYYY-MM-DD'),
+        //                DateObject: day.toDate(),
+        //                BeginTime: period[0],
+        //                EndTime: period[1],
+        //                Duration: duration,
+        //                CDuration: cDuration += duration
+        //            });
+        //        }.bind(this, day));
+        //    }, this);
+        //}, this);
 
         //forEach(function (day) {
         //    dayTimeTable.forEach(function (period) {
@@ -140,11 +188,11 @@ var TimeSegmentsManager = {
         //    }, this);
         //}, this);
 
-        return promise;
+        //return promise;
     },
 
     _addTimeSegments: function () {
-
+        this._addingTickQueue = this._timeSegments.slice()
     },
 
     /**
