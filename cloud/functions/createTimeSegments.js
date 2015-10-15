@@ -62,6 +62,12 @@ var TimeSegmentsManager = {
     _timeSegments: [],
 
     /**
+     * @type {Array.<Object>}
+     * @private
+     */
+    _addingTickQueue: [],
+
+    /**
      * @param {Object} params
      * @public
      * @return {Parse.Promise}
@@ -79,21 +85,23 @@ var TimeSegmentsManager = {
             this._numberOfDays = Number(params.numberOfDays);
         }
 
-        return isDayForStart ? Parse.Config.get().then(function (config) {
-            var currentHours = new Date().getHours() + 1;
+        if (params.timeOut) {
+            this._timeOut = Number(params.timeOut);
+        }
 
-            return this._cleanSegments().done(this._createSegments.bind(this)).done(function () {
-                return Parse.Promise.as('TimeSegments successfully created');
-            });
+        if (params.packageLength) {
+            this._packageLength = Number(params.packageLength);
+        }
 
-            //this._cleanTimeSegments().then(this._fillTimeSegments.bind(this), Function.prototype)
-            //    .then(function () {
-            //        return Parse.Promise.as('TimeSegments successfully created');
-            //    }, Function.prototype);
-        }.bind(this)) : Parse.Promise.as('today is not a day for starting CreateTimeSegments');
+        return isDayForStart ? this._cleanSegments().done(this._createSegments.bind(this)).done(function () {
+            return Parse.Promise.as('TimeSegments successfully created');
+        }) : Parse.Promise.as('today is not a day for starting CreateTimeSegments');
     },
 
-
+    /**
+     * @return {Parse.Promise}
+     * @private
+     */
     _createSegments: function () {
         'use strict';
 
@@ -140,59 +148,41 @@ var TimeSegmentsManager = {
                 };
             }));
         }));
-
-        //return this._getDaysToFill().filter(function (day) {
-        //    var isHoliday = workshopHolidays.hasOwnProperty(day.format('YYYY-MM-DD')),
-        //        dayName = day.format('ddd').toUpperCase(),
-        //        dayTimeTable = workshopTimetable[dayName];
-        //
-        //    return isHoliday || dayTimeTable.length === 0;
-        //}).forEach(function (day) {
-        //    dayTimeTable.forEach(function (period) {
-        //TimeSegmentsClass = Parse.Object.extend(this._objectClass),
-        //        promise = promise.then(function (day) {
-        //            var timeSegment = new TimeSegmentsClass(),
-        //                duration = utils.getDurationForPeriod(period);
-        //
-        //            return timeSegment.save({
-        //                WorkshopKey: workshopKey,
-        //                SegmentId: segmentId++,
-        //                Date: day.format('YYYY-MM-DD'),
-        //                DateObject: day.toDate(),
-        //                BeginTime: period[0],
-        //                EndTime: period[1],
-        //                Duration: duration,
-        //                CDuration: cDuration += duration
-        //            });
-        //        }.bind(this, day));
-        //    }, this);
-        //}, this);
-
-        //forEach(function (day) {
-        //    dayTimeTable.forEach(function (period) {
-        //        promise = promise.then(function (day) {
-        //            var timeSegment = new TimeSegmentsClass(),
-        //                duration = utils.getDurationForPeriod(period);
-        //
-        //            return timeSegment.save({
-        //                WorkshopKey: workshopKey,
-        //                SegmentId: segmentId++,
-        //                Date: day.format('YYYY-MM-DD'),
-        //                DateObject: day.toDate(),
-        //                BeginTime: period[0],
-        //                EndTime: period[1],
-        //                Duration: duration,
-        //                CDuration: cDuration += duration
-        //            });
-        //        }.bind(this, day));
-        //    }, this);
-        //}, this);
-
-        //return promise;
     },
 
+    /**
+     * @return {Parse.Promise}
+     * @private
+     */
     _addTimeSegments: function () {
-        this._addingTickQueue = this._timeSegments.slice()
+        'use strict';
+
+        var TimeSegmentsClass = Parse.Object.extend(this._objectClass),
+            addToQueue = this._timeSegments.splice(0, this._packageLength - this._tickLength - this._addingTickQueue.length);
+        this._tickLength += addToQueue.length;
+        this._addingTickQueue.splice(this._addingTickQueue.length, 0, addToQueue);
+
+        if (this._tickLength === 0) {
+            return Promise.as('complete');
+        }
+
+        return Promise.when(this._addingTickQueue.map(function (objectToAdd) {
+            var timeSegment = new TimeSegmentsClass();
+
+            return timeSegment.save(objectToAdd).done(function () {
+                this._addingTickQueue.splice(this._addingTickQueue.indexOf(objectToAdd), 1);
+            }.bind(this));
+        })).then(this._addTimeSegmentsTimeouted.bind(this), this._addTimeSegmentsTimeouted.bind(this));
+    },
+
+    /**
+     * @return {Parse.Promise}
+     * @private
+     */
+    _addTimeSegmentsTimeouted: function () {
+        'use strict';
+
+        return this._wait().done(this._addTimeSegments.bind(this));
     },
 
     /**
